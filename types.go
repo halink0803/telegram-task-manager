@@ -10,6 +10,7 @@ type Task struct {
 
 type Issue struct {
 	Title string `json:"title"`
+	Description string `json:"description"`
 }
 
 type Project struct {

@@ -11,12 +11,13 @@ type TaskStorage struct {
 }
 
 type TaskDB struct {
-	ID        int `storm:"id,increment"`
-	ProjectID int `storm:"index"`
-	Title     string
-	Deadline  uint64
-	Status    string `storm:"index"`
-	Assigned  string `storm:"index"`
+	ID          int `storm:"id,increment"`
+	ProjectID   int `storm:"index"`
+	Title       string
+	Deadline    uint64
+	Status      string `storm:"index"` // init,doing,done
+	Assigned    string `storm:"index"`
+	Description string
 }
 
 type ProjectDB struct {
@@ -30,6 +31,11 @@ type DefaultProject struct {
 	ID        int   `storm:"id,increment"`
 	ChatID    int64 `storm:"index"`
 	ProjectID int
+}
+
+type PinMessage struct {
+	ID      int `storm:"id,increment"`
+	Message string
 }
 
 func NewStorage() (*TaskStorage, error) {
@@ -60,7 +66,7 @@ func (self *TaskStorage) StoreTask(task Task, projectID int) error {
 }
 
 func (self *TaskStorage) UpdateTask(task TaskDB) error {
-	err := self.db.Update(task)
+	err := self.db.Update(&task)
 	if err != nil {
 		log.Printf("Cannot update task %s: %s", task.Title, err.Error())
 	}
@@ -92,6 +98,15 @@ func (self *TaskStorage) GetTaskByAssignee(telegramID string) ([]TaskDB, error) 
 		log.Printf("Cannot get task by assignee %s: %s", telegramID, err.Error())
 	}
 	return tasks, err
+}
+
+func (self *TaskStorage) GetTask(taskID int) (TaskDB, error) {
+	var task TaskDB
+	err := self.db.One("ID", taskID, &task)
+	if err != nil {
+		log.Printf("Cannot get task %d: %s", taskID, err.Error())
+	}
+	return task, err
 }
 
 func (self *TaskStorage) StoreProject(project Project) error {
@@ -156,4 +171,41 @@ func (self *TaskStorage) GetDefaultProject(chatID int64) (DefaultProject, error)
 		return defaultProject, err
 	}
 	return defaultProject, nil
+}
+
+func (self *TaskStorage) UpdatePinMessage(message string) error {
+	var messages []PinMessage
+	err := self.db.All(&messages)
+	log.Printf("What happen: %+v", messages)
+	if err != nil {
+		log.Printf("Cannot update pin message: %s", err.Error())
+		return err
+	}
+	pinMessage := PinMessage{}
+	if len(messages) != 0 {
+		pinMessage = messages[0]
+		pinMessage.Message = message
+		err = self.db.Update(&pinMessage)
+		if err != nil {
+			log.Printf("Cannot update pin message: %s", err.Error())
+		}
+	} else {
+		pinMessage.Message = message
+		err = self.db.Save(&pinMessage)
+		if err != nil {
+			log.Printf("Cannot update pin message: %s", err.Error())
+		}
+	}
+	return err
+}
+
+func (self *TaskStorage) GetPinMessage() (string, error) {
+	var messages []PinMessage
+	err := self.db.All(&messages)
+	if err != nil {
+		log.Printf("Cannot update pin message: %s", err.Error())
+		return "", err
+	}
+	pinMessage := messages[0]
+	return pinMessage.Message, err
 }

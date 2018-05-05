@@ -23,6 +23,7 @@ type Bot struct {
 }
 
 var currentCommand string
+var currentTask int
 
 func readConfigFromFile(path string) (BotConfig, error) {
 	data, err := ioutil.ReadFile(path)
@@ -36,6 +37,7 @@ func readConfigFromFile(path string) (BotConfig, error) {
 }
 
 func main() {
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds | log.Lshortfile)
 	path := "./config.json"
 	botConfig, err := readConfigFromFile(path)
 	if err != nil {
@@ -106,16 +108,20 @@ func main() {
 		// TODO:
 	})
 
-	mybot.bot.Handle("/listTaskByStatus", func(m *tb.Message) {
-		// TODO:
+	mybot.bot.Handle("/pin", func(m *tb.Message) {
+		mybot.handlePin(m)
 	})
 
+	// mybot.bot.Handle("/listTaskByStatus", func(m *tb.Message) {
+	// 	mybot.handleListTaskByStatus(m)
+	// })
+
 	mybot.bot.Handle("/listTaskByAssignee", func(m *tb.Message) {
-		// TODO:
+		mybot.handleListTaskByAssignee(m)
 	})
 
 	mybot.bot.Handle("/mine", func(m *tb.Message) {
-		// TODO:
+		mybot.handleMyList(m)
 	})
 
 	mybot.bot.Start()
@@ -198,31 +204,60 @@ func (self Bot) createTask(m *tb.Message) {
 }
 
 func (self Bot) handleListTask(m *tb.Message) {
-	tasks, err := self.storage.GetAllTasks()
-	if err != nil {
-		self.bot.Send(m.Chat, fmt.Sprintf("Cannot get task list: %s", err.Error()))
-	} else {
-		message := "Task list: \n"
-		for _, task := range tasks {
-			message += fmt.Sprintf("%s", task.Title)
-		}
-		self.bot.Send(m.Chat, message)
+	message := "Which task do you want to list? \n"
+	inlineKeys := [][]tb.InlineButton{}
+	all := tb.InlineButton{
+		Unique: "all",
+		Text:   "All",
 	}
+	self.bot.Handle(&all, func(c *tb.Callback) {
+		self.handleListAllTasks(m)
+		self.bot.Respond(c, &tb.CallbackResponse{})
+	})
+	inlineKeys = append(inlineKeys, []tb.InlineButton{all})
+	notStart := tb.InlineButton{
+		Unique: "not_start",
+		Text:   "Not Started Yet",
+	}
+	inlineKeys = append(inlineKeys, []tb.InlineButton{notStart})
+	doing := tb.InlineButton{
+		Unique: "doing",
+		Text:   "Doing",
+	}
+	self.bot.Handle(&notStart, func(c *tb.Callback) {
+		self.handleListTaskByStatus(m, notStart.Unique)
+	})
+	inlineKeys = append(inlineKeys, []tb.InlineButton{doing})
+	done := tb.InlineButton{
+		Unique: "done",
+		Text:   "Done",
+	}
+	inlineKeys = append(inlineKeys, []tb.InlineButton{done})
+	byAssignee := tb.InlineButton{
+		Unique: "by_assignee",
+		Text:   "By Assignee",
+	}
+	inlineKeys = append(inlineKeys, []tb.InlineButton{byAssignee})
+	self.bot.Reply(m, message, &tb.SendOptions{
+		ReplyMarkup: &tb.ReplyMarkup{
+			InlineKeyboard: inlineKeys,
+		},
+	})
 }
 
 func (self Bot) handleListProjects(m *tb.Message) {
 	projects, err := self.storage.GetAllProjects()
 	if err != nil {
-		self.bot.Send(m.Chat, fmt.Sprintf("Cannot get list projects: %s", err.Error()))
+		self.bot.Reply(m, fmt.Sprintf("Cannot get list projects: %s", err.Error()))
 	} else {
 		if len(projects) == 0 {
-			self.bot.Send(m.Chat, "There is not a project yet.")
+			self.bot.Reply(m, "There is not a project yet.")
 		}
 		message := "Project list: \n"
 		for _, project := range projects {
 			message += fmt.Sprintf("*%s* created by _@%s_ \n", project.Title, project.Creator)
 		}
-		self.bot.Send(m.Chat, message, &tb.SendOptions{
+		self.bot.Reply(m, message, &tb.SendOptions{
 			ParseMode: tb.ModeMarkdown,
 		})
 	}
@@ -231,7 +266,7 @@ func (self Bot) handleListProjects(m *tb.Message) {
 func (self Bot) handleSetDefaultProject(m *tb.Message) {
 	projects, err := self.storage.GetAllProjects()
 	if err != nil {
-		self.bot.Send(m.Chat, fmt.Sprintf("Cannot get list project to set: %s", err.Error()))
+		self.bot.Reply(m, fmt.Sprintf("Cannot get list project to set: %s", err.Error()))
 		return
 	}
 	inlineKeys := [][]tb.InlineButton{}
@@ -278,6 +313,109 @@ func (self Bot) handleCurrentProject(m *tb.Message) {
 	}
 }
 
+func (self Bot) handleListAllTasks(m *tb.Message) {
+	tasks, err := self.storage.GetAllTasks()
+	if err != nil {
+		self.bot.Reply(m, fmt.Sprintf("Cannot get task list: %s", err.Error()))
+	} else {
+		self.bot.Reply(m, "Task list:")
+		for _, task := range tasks {
+			message := ""
+			message += fmt.Sprintf("*%s* \n", task.Title)
+			message += fmt.Sprintf("Status: *%s* \n", task.Status)
+			message += fmt.Sprintf("Assginee: _%s_ \n", task.Assigned)
+			message += fmt.Sprintf("Deadline: *%d* \n", task.Deadline)
+			message += fmt.Sprintf("Description: %s", task.Description)
+
+			inlineKeys := [][]tb.InlineButton{}
+			assignButton := tb.InlineButton{
+				Unique: strconv.Itoa(task.ID),
+				Text:   "👤",
+			}
+			self.bot.Handle(&assignButton, func(c *tb.Callback) {
+				taskID, _ := strconv.Atoi(assignButton.Unique)
+				self.handleAssignTask(m, taskID)
+			})
+			inlineKeys = append(inlineKeys, []tb.InlineButton{assignButton})
+			self.bot.Reply(m, message, &tb.SendOptions{
+				ParseMode: tb.ModeMarkdown,
+				ReplyMarkup: &tb.ReplyMarkup{
+					InlineKeyboard: inlineKeys,
+				},
+			})
+		}
+	}
+}
+
+func (self Bot) handleListTaskByStatus(m *tb.Message, status string) {
+
+}
+
+func (self Bot) handleListTaskByAssignee(m *tb.Message) {
+
+}
+
+func (self Bot) handleMyList(m *tb.Message) {
+	telegramID := m.Sender.Username
+	tasks, err := self.storage.GetTaskByAssignee("@" + telegramID)
+	if err != nil {
+		self.bot.Reply(m, fmt.Sprintf("Cannot get your task list: %s", err.Error()))
+	} else {
+		message := "Your task list: \n"
+		for _, task := range tasks {
+			message += fmt.Sprintf("*%s*", task.Title)
+		}
+		self.bot.Reply(m, message, &tb.SendOptions{
+			ParseMode: tb.ModeMarkdown,
+		})
+	}
+}
+
+func (self Bot) handleAssignTask(m *tb.Message, taskID int) {
+	currentCommand = "assign_task"
+	currentTask = taskID
+	self.bot.Send(m.Chat, fmt.Sprintf("Who do you want to assign?"))
+}
+
+func (self Bot) assignTask(assignee string, currentTask int, m *tb.Message) {
+	task, err := self.storage.GetTask(currentTask)
+	if err != nil {
+		self.bot.Send(m.Chat, fmt.Sprintf("Cannot assign task: %s", err.Error))
+		return
+	}
+	task.Assigned = assignee
+	err = self.storage.UpdateTask(task)
+	if err != nil {
+		self.bot.Send(m.Chat, fmt.Sprintf("Cannot assigntask: %s", err.Error()))
+		return
+	}
+	self.bot.Send(m.Chat, fmt.Sprintf("Task *%s* is assigned to *%s* successfully", task.Title, assignee), &tb.SendOptions{
+		ParseMode: tb.ModeMarkdown,
+	})
+}
+
+func (self Bot) handlePin(m *tb.Message) {
+	if m.IsReply() {
+		// update pin message
+		pinMessage := m.ReplyTo
+		err := self.storage.UpdatePinMessage(pinMessage.Text)
+		log.Printf("Error: %+v", err)
+		if err != nil {
+			self.bot.Reply(m, fmt.Sprintf("Cannot pin message: %s", err.Error()))
+		} else {
+			self.bot.Reply(m, fmt.Sprintf("Update pin message successfully"))
+		}
+	} else {
+		// show pin message
+		pinMessage, err := self.storage.GetPinMessage()
+		if err != nil {
+			self.bot.Reply(m, fmt.Sprintf("Cannot show pin message: %s", err.Error()))
+		} else {
+			self.bot.Reply(m, fmt.Sprintf("Pined message: %s", pinMessage))
+		}
+	}
+}
+
 func (self Bot) handleText(m *tb.Message) {
 	log.Printf(currentCommand)
 	switch currentCommand {
@@ -287,5 +425,7 @@ func (self Bot) handleText(m *tb.Message) {
 	case "create_project":
 		self.saveProject(m.Text, m)
 		currentCommand = ""
+	case "assign_task":
+		self.assignTask(m.Text, currentTask, m)
 	}
 }
