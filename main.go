@@ -61,30 +61,30 @@ func main() {
 	}
 
 	mybot.bot.Handle("/start", func(m *tb.Message) {
-		mybot.bot.Send(m.Chat, "Thank you for trying")
+		mybot.bot.Send(m.Chat, fmt.Sprintf(`This is a bot for manage tasks.`))
 	})
 
-	mybot.bot.Handle("/createTask", func(m *tb.Message) {
+	mybot.bot.Handle("/create_task", func(m *tb.Message) {
 		mybot.createTask(m)
 	})
 
-	mybot.bot.Handle("/createProject", func(m *tb.Message) {
+	mybot.bot.Handle("/create_project", func(m *tb.Message) {
 		mybot.createProject(m)
 	})
 
-	mybot.bot.Handle("/listTask", func(m *tb.Message) {
+	mybot.bot.Handle("/list_task", func(m *tb.Message) {
 		mybot.handleListTask(m)
 	})
 
-	mybot.bot.Handle("/listProjects", func(m *tb.Message) {
+	mybot.bot.Handle("/list_projects", func(m *tb.Message) {
 		mybot.handleListProjects(m)
 	})
 
-	mybot.bot.Handle("/setDefaultProject", func(m *tb.Message) {
+	mybot.bot.Handle("/set_default_project", func(m *tb.Message) {
 		mybot.handleSetDefaultProject(m)
 	})
 
-	mybot.bot.Handle("/currentProject", func(m *tb.Message) {
+	mybot.bot.Handle("/current_project", func(m *tb.Message) {
 		mybot.handleCurrentProject(m)
 	})
 
@@ -105,7 +105,7 @@ func main() {
 	})
 
 	mybot.bot.Handle("/discuss", func(m *tb.Message) {
-		// TODO:
+		// TODO: complete this function
 	})
 
 	mybot.bot.Handle("/pin", func(m *tb.Message) {
@@ -143,7 +143,6 @@ func (self Bot) saveProject(projectTitle string, m *tb.Message) {
 }
 
 func (self Bot) saveTask(taskTitle string, m *tb.Message) {
-	log.Printf("Saving task")
 	newTask := Task{
 		Title: taskTitle,
 	}
@@ -306,10 +305,10 @@ func (self Bot) setDefaultProject(chatID int64, projectID int, m *tb.Message) {
 func (self Bot) handleCurrentProject(m *tb.Message) {
 	defaultProject, err := self.storage.GetDefaultProject(m.Chat.ID)
 	if err != nil {
-		self.bot.Send(m.Chat, fmt.Sprintf("Cannot get current project for this chat: %s", err.Error()))
+		self.bot.Reply(m, fmt.Sprintf("Cannot get current project for this chat: %s", err.Error()))
 	} else {
 		project, _ := self.storage.GetProject(defaultProject.ProjectID)
-		self.bot.Send(m.Chat, fmt.Sprintf("Current project for this chat: %s", project.Title))
+		self.bot.Reply(m, fmt.Sprintf("Current project for this chat: %s", project.Title))
 	}
 }
 
@@ -321,11 +320,7 @@ func (self Bot) handleListAllTasks(m *tb.Message) {
 		self.bot.Reply(m, "Task list:")
 		for _, task := range tasks {
 			message := ""
-			message += fmt.Sprintf("*%s* \n", task.Title)
-			message += fmt.Sprintf("Status: *%s* \n", task.Status)
-			message += fmt.Sprintf("Assginee: _%s_ \n", task.Assigned)
-			message += fmt.Sprintf("Deadline: *%d* \n", task.Deadline)
-			message += fmt.Sprintf("Description: %s", task.Description)
+			message += fmt.Sprintf("*%s* - *%s* - *%s*", task.Assigned, task.Deadline, task.Title)
 
 			inlineKeys := [][]tb.InlineButton{}
 			assignButton := tb.InlineButton{
@@ -347,8 +342,22 @@ func (self Bot) handleListAllTasks(m *tb.Message) {
 	}
 }
 
-func (self Bot) handleListTaskByStatus(m *tb.Message, status string) {
+func (self Bot) sendTasks(taskType string, m *tb.Message, tasks []TaskDB) {
+	if len(tasks) == 0 {
+		self.bot.Reply(m, fmt.Sprintf("There is no *%s* task for show", taskType), &tb.SendOptions{
+			ParseMode: tb.ModeMarkdown,
+		})
+	}
+}
 
+func (self Bot) handleListTaskByStatus(m *tb.Message, status string) {
+	tasks, err := self.storage.GetTaskByStatus(status)
+	if err != nil {
+		self.bot.Reply(m, fmt.Sprintf("Cannot get *%s* tasks: %s", status, err.Error()), &tb.SendOptions{
+			ParseMode: tb.ModeMarkdown,
+		})
+	}
+	self.sendTasks(status, m, tasks)
 }
 
 func (self Bot) handleListTaskByAssignee(m *tb.Message) {
@@ -378,6 +387,7 @@ func (self Bot) handleAssignTask(m *tb.Message, taskID int) {
 }
 
 func (self Bot) assignTask(assignee string, currentTask int, m *tb.Message) {
+	currentCommand = ""
 	task, err := self.storage.GetTask(currentTask)
 	if err != nil {
 		self.bot.Send(m.Chat, fmt.Sprintf("Cannot assign task: %s", err.Error))
