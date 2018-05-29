@@ -1,0 +1,11 @@
+
+go_import_path: github.com/halink0803/telegram-task-management
+
+language: go
+
+install:
+  - go get -u github.com/alecthomas/gometalinter
+  - gometalinter --install
+
+script:
+  - gometalinter --config=gometalinter.json ./...
