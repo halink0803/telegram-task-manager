@@ -10,21 +10,9 @@ type Task struct {
 	Description string `json:"description"`
 }
 
-// Issue object
-type Issue struct {
-	Title       string `json:"title"`
-	Description string `json:"description"`
-}
-
 // Project object
 type Project struct {
 	Title   string `json:"title"`
 	Creator string `json:"creator"`
 	Status  string `json:"status"`
-}
-
-// User object
-type User struct {
-	TelegramID string `json:"telegram_id"`
-	TrelloID   string `json:"trello_id"`
 }
