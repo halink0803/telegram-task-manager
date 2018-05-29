@@ -1,7 +1,6 @@
 ##Telegram Task Management Bot
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/halink0803/telegram-task-manager)](https://goreportcard.com/report/github.com/halink0803/telegram-task-manager)
-
 [![Build Status](https://travis-ci.org/halink0803/telegram-task-manager.svg?branch=master)](https://travis-ci.org/halink0803/telegram-task-manager)
 
 
